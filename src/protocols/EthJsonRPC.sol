@@ -13,6 +13,11 @@ contract EthJsonRPC {
 
     string endpoint;
 
+    struct AccountOverride {
+        address addr;
+        bytes code;
+    }
+
     constructor(string memory _endpoint) {
         endpoint = _endpoint;
     }
@@ -23,6 +28,21 @@ contract EthJsonRPC {
     function nonce(address addr) public returns (uint256) {
         bytes memory body = abi.encodePacked(
             '{"jsonrpc":"2.0","method":"eth_getTransactionCount","params":["',
+            LibString.toHexStringChecksummed(addr),
+            '","latest"],"id":1}'
+        );
+
+        JSONParserLib.Item memory item = doRequest(string(body));
+        uint256 val = JSONParserLib.parseUintFromHex(trimQuotes(item.value()));
+        return val;
+    }
+
+    /// @notice get the balance of an address.
+    /// @param addr the address to get the balance.
+    /// @return val the balance of the address.
+    function balance(address addr) public returns (uint256) {
+        bytes memory body = abi.encodePacked(
+            '{"jsonrpc":"2.0","method":"eth_getBalance","params":["',
             LibString.toHexStringChecksummed(addr),
             '","latest"],"id":1}'
         );
@@ -50,6 +70,44 @@ contract EthJsonRPC {
         return result;
     }
 
+    /// @notice call a contract function with a state override.
+    /// @param to the address of the contract.
+    /// @param data the data of the function.
+    /// @param accountOverride the state override.
+    /// @return the result of the function call.
+    function call(address to, bytes memory data, AccountOverride[] memory accountOverride)
+        public
+        returns (bytes memory)
+    {
+        bytes memory body = abi.encodePacked(
+            '{"jsonrpc":"2.0","method":"eth_call","params":[{"to":"',
+            LibString.toHexStringChecksummed(to),
+            '","data":"',
+            LibString.toHexString(data),
+            '"},"latest",{'
+        );
+
+        for (uint256 i = 0; i < accountOverride.length; i++) {
+            body = abi.encodePacked(
+                body,
+                '"',
+                LibString.toHexStringChecksummed(accountOverride[i].addr),
+                '": {"code": "',
+                LibString.toHexString(accountOverride[i].code),
+                '"}'
+            );
+            if (i < accountOverride.length - 1) {
+                body = abi.encodePacked(body, ",");
+            }
+        }
+        body = abi.encodePacked(body, '}],"id":1}');
+
+        JSONParserLib.Item memory item = doRequest(string(body));
+        bytes memory result = HexStrings.fromHexString(_stripQuotesAndPrefix(item.value()));
+
+        return result;
+    }
+
     function doRequest(string memory body) public returns (JSONParserLib.Item memory) {
         Suave.HttpRequest memory request;
         request.method = "POST";
@@ -61,6 +119,10 @@ contract EthJsonRPC {
         bytes memory output = Suave.doHTTPRequest(request);
 
         JSONParserLib.Item memory item = string(output).parse();
+        JSONParserLib.Item memory err = item.at('"error"');
+        if (!err.isUndefined()) {
+            revert(err.value());
+        }
         return item.at('"result"');
     }
 

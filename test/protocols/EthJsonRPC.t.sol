@@ -14,13 +14,39 @@ contract EthJsonRPCTest is Test, SuaveEnabled {
         assertEq(nonce, 0);
     }
 
+    function testEthJsonRPCGetBalance() public {
+        EthJsonRPC ethjsonrpc = getEthJsonRPC();
+
+        uint256 balance = ethjsonrpc.balance(address(this));
+        assertEq(balance, 0);
+    }
+
     function testEthJsonRPCCall() public {
         EthJsonRPC ethjsonrpc = getEthJsonRPC();
 
         bytes memory data = abi.encodeWithSignature("get_deposit_count()");
         bytes memory result = ethjsonrpc.call(address(0x00000000219ab540356cBB839Cbe05303d7705Fa), data);
+        uint256 resultUint = abi.decode(result, (uint256));
 
-        require(result.length > 0, "result is empty");
+        require(resultUint > 0, "result is empty");
+    }
+
+    function testEthJsonRPCCallWithOverrides() public {
+        EthJsonRPC ethjsonrpc = getEthJsonRPC();
+
+        EthJsonRPC.AccountOverride memory accountOverride = EthJsonRPC.AccountOverride({
+            addr: address(0x00000000219ab540356cBB839Cbe05303d7705Fa),
+            code: type(TestOverrideContract).runtimeCode
+        });
+
+        EthJsonRPC.AccountOverride[] memory acco = new EthJsonRPC.AccountOverride[](1);
+        acco[0] = accountOverride;
+
+        bytes memory data = abi.encodeWithSignature("get_deposit_count()");
+        bytes memory result = ethjsonrpc.call(address(0x00000000219ab540356cBB839Cbe05303d7705Fa), data, acco);
+        uint256 resultUint = abi.decode(result, (uint256));
+
+        require(resultUint == 10, "result is empty");
     }
 
     function getEthJsonRPC() public returns (EthJsonRPC ethjsonrpc) {
@@ -29,5 +55,11 @@ contract EthJsonRPCTest is Test, SuaveEnabled {
         } catch {
             vm.skip(true);
         }
+    }
+}
+
+contract TestOverrideContract {
+    function get_deposit_count() public pure returns (uint256) {
+        return 10;
     }
 }

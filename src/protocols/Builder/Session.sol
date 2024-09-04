@@ -40,15 +40,32 @@ contract Session is Test {
         callImpl("buildBlock", input);
     }
 
-    function bid(string memory blsPubKey) public returns (JSONParserLib.Item memory) {
+    function bid(string memory blsPubKey) public returns (JSONParserLib.Item memory output) {
         bytes memory input = abi.encodePacked(session, ',"0x', blsPubKey, '"');
-        JSONParserLib.Item memory output = callImpl("bid", input);
+        output = callImpl("bid", input);
 
         console.log("-- bid output --");
         console.log(output.value());
 
         // retrieve the root to sign
         bytes memory root = HexStrings.fromHexString(HexStrings.stripQuotesAndPrefix(output.at('"root"').value()));
+        // TODO: do something with this root
+        root; // suppress warning
+    }
+
+    function doCall(address target, bytes memory data) public returns (bytes memory) {
+        bytes memory encodedRequest = abi.encodePacked(
+            '{"to":"', LibString.toHexStringChecksummed(target), '","data":"', LibString.toHexString(data), '"}'
+        );
+        return doCall(encodedRequest);
+    }
+
+    function doCall(bytes memory encodedRequest) public returns (bytes memory) {
+        bytes memory input = abi.encodePacked(session, ",", encodedRequest);
+        JSONParserLib.Item memory item = callImpl("call", input);
+
+        bytes memory result = HexStrings.fromHexString(HexStrings.stripQuotesAndPrefix(item.value()));
+        return result;
     }
 
     function callImpl(string memory method, bytes memory args) internal returns (JSONParserLib.Item memory) {
